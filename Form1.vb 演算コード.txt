@@ -1,0 +1,362 @@
+﻿Public Class Form1
+    Private Sub Button1_Click(sender As Object, e As EventArgs) Handles Button1.Click
+        Dim strCalcData As String                                               ' 演算文をそのまま格納する場所
+        Dim strCalcChar(,) As String                                            ' 演算文を数字・演算子・ｶｯｺに分けて格納する為の場所 (x,0):文字、(x,1)：属性
+        Dim ulErrCode As Long                                                   ' ｴﾗｰｺｰﾄﾞを格納
+        Dim ulDecompCount As Long                                               ' 文字列をばらした数
+        Dim ulCount As Long
+
+        strCalcData = txtCalcString.Text                                        ' 入力文字列を演算文へ格納
+        txtLog.Text = strCalcData + vbCrLf
+        txtAnswer.Text = ""
+
+        'エラーチェック
+        If IsSyntaxErr(strCalcData, ulErrCode) Then                             ' もし演算文がｴﾗｰなら
+            txtLog.Text = "Syntax Err : " + Strings.Right("0000" + Hex(ulErrCode), 4)  ' ｴﾗｰ表示(ｴﾗｰｺｰﾄﾞは16進表示)
+        Else                                                                    ' ｴﾗｰが無ければ
+            Do                                                                  ' 繰り返し演算
+                Application.DoEvents()                                          ' 一度OSへ制御を返し、画面ﾛｯｸを防ぐ
+                ReDim strCalcChar(Strings.Len(strCalcData) - 1, 2)                 ' 0から数えて文字列長分、格納先を確保する
+                txtLog.Text = txtLog.Text + "分割:" + vbCrLf
+                ulDecompCount = DecompStr(strCalcData, strCalcChar)             ' strCalcData を strCalcCharへ分割して格納
+                If ulDecompCount = 1 Then                                       '分割しても1個だけなら
+                    Exit Do                                                     ' LOOPを抜ける
+                Else                                                            '分割結果を表示
+                    For ulCount = 0 To ulDecompCount - 1
+                        Application.DoEvents()
+                        txtLog.Text = txtLog.Text + strCalcChar(ulCount, 0) + ","
+                    Next
+                    txtLog.Text = txtLog.Text + vbCrLf  '改行
+
+                    If CalcString(ulDecompCount, strCalcChar) = 1 Then      '演算関数の戻り値が１なら０で割り算した
+                        txtLog.Text = txtLog.Text + "!!!ｾﾞﾛで除算!!!"
+                        Exit Do
+
+                    End If
+
+                    txtLog.Text = txtLog.Text + "連結:" + vbCrLf
+                    strCalcData = ""                                            ' 演算文初期化
+                    For ulCount = 0 To ulDecompCount - 1
+                        Application.DoEvents()
+                        strCalcData = strCalcData + strCalcChar(ulCount, 0)     ' 分割された文字を連結して、新たな演算文とする
+                    Next
+                    txtLog.Text = txtLog.Text + strCalcData + vbCrLf
+
+                End If
+            Loop
+
+            txtAnswer.Text = strCalcData
+            MsgBox("答え＝ " + strCalcData)
+
+        End If
+
+    End Sub
+    Private Function IsSyntaxErr(ByVal strData As String, ByRef ulErrCode As Long) As Boolean
+
+        Dim ulCount As Long                                                     ' 繰返し用変数
+        Dim ulNesting As Long                                                   ' ｶｯｺのつり合い状態
+
+        IsSyntaxErr = True                                                      ' ｴﾗｰあり
+
+        Select Case Strings.Left(strData, 1)                                    ' 左側１番目(つまり先頭の値)
+            Case ")", "*", "/"                                              ' ),*,/ の場合
+                ulErrCode = &H1                                                 ' ｴﾗｰｺｰﾄﾞ=0x0001
+                Exit Function                                                       ' 関数を抜ける
+        End Select
+
+        Select Case Strings.Right(strData, 1)                                   ' 右側１番目(つまり最後尾の値)
+            Case "(", "*", "/", "+", "-", "."                         ' 
+                ulErrCode = &H2                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+                Exit Function                                                       ' 関数を抜ける
+        End Select
+
+        ulNesting = 0                                                           ' ｶｯｺつりあい変数初期化
+        For ulCount = 1 To Strings.Len(strData)                                 ' 1文字目からから文字列の長さ分繰り返す
+            If Mid(strData, ulCount, 1) = "(" Then                              ' 左ｶｯｺなら 
+                ulNesting = ulNesting + 1                                       ' つり合いを＋１
+            End If
+            If Mid(strData, ulCount, 1) = ")" Then                              ' 右ｶｯｺなら 
+                ulNesting = ulNesting - 1                                       ' つり合いを－１
+            End If
+        Next
+        If ulNesting <> 0 Then                                                   ' 左右釣り合いが取れていなければ
+            ulErrCode = &H3                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+        End If
+
+        ' ＊のあとに＊や/、（のあとに＊や／、．のあとに＊や／や（や）とかもｴﾗｰ
+        If InStr(strData, "**") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "/*") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "*/") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "//") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "+/") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "-/") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "+*") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "-*") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, ")(") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "(*") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "(/") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "*)") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "/)") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, ".+") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, ".-") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, ".*") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "./") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "+.") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "-.") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "*.") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+        If InStr(strData, "/.") <> 0 Then
+            ulErrCode = &H4                                                 ' ｴﾗｰｺｰﾄﾞ=0x0002
+            Exit Function                                                       ' 関数を抜ける
+
+        End If
+
+        ' そもそも文字が入力されていなければ(len=0だったら
+
+
+        ' ここまで無事残っていたらｴﾗｰなし
+        ulErrCode = &H0                                                         ' ｴﾗｰｺｰﾄﾞ=0x0000
+        IsSyntaxErr = False
+
+    End Function
+
+    ' 演算文を数字・演算子・ｶｯｺに分ける
+    ' 返値：分けた数
+    ' 引数：strData(文字列形式)の値(入力)
+    '     ：strChr(文字列形式)の格納場所(分けたもの。出力) 
+    ' 
+    Private Function DecompStr(ByVal strData As String, ByRef strChar(,) As String) As Long
+
+        Dim ulCount As Long                                                     ' 繰返し用変数
+        Dim ulTarget As Long                                                    ' 格納先の番号
+        Dim strTemp As String                                                   ' 作業用文字格納場所 
+
+        For ulCount = 0 To Strings.Len(strData) - 1                                 ' 1文字目からから文字列の長さ分繰り返す
+            strChar(ulCount, 0) = ""                                                 ' 格納先を初期化(空っぽに)する
+            strChar(ulCount, 1) = 0                                             ' 属性を0(ﾃﾞｰﾀなし)とする
+        Next
+
+        ulTarget = 0                                                        ' 格納先の箱の番号
+        For ulCount = 0 To Strings.Len(strData) - 1                                 '文字列の長さ分繰り返す
+            strTemp = Mid(strData, ulCount + 1, 1)                              ' 一文字取得
+            Select Case strTemp
+                Case "*", "/"
+                    ulTarget = ulTarget + 1
+                    strChar(ulTarget, 0) = strTemp                               ' ulTargetがしめす箱へ
+                    strChar(ulTarget, 1) = 1                                     ' 属性=1(四則演算子)
+                Case "+", "-"
+                    ulTarget = ulTarget + 1
+                    If ulCount = 0 Then                        ' 一文字目の場合は四則演算子ではなく符号(数字の一部)
+                        ulTarget = ulTarget - 1
+                        strChar(ulTarget, 0) = strChar(ulTarget, 0) + strTemp                          ' 箱に格納
+                        strChar(ulTarget, 1) = 4                                ' 属性=4(数字)
+                    Else                                                        ' 二文字目以降
+                        If (strChar(ulTarget - 1, 1) = 1) Or (strChar(ulTarget - 1, 1) = 2) Then        ' 直前の文字の属性が1か2だったら四則演算子ではなく符号
+                            strChar(ulTarget, 0) = strChar(ulTarget, 0) + strTemp
+                            strChar(ulTarget, 1) = 4                            ' 属性=4(数字)
+                        Else
+                            strChar(ulTarget, 0) = strTemp                              ' ulTargetがしめす箱へ
+                            strChar(ulTarget, 1) = 1                                     ' 属性=1(四則演算子)
+                        End If
+                    End If
+                Case "("
+                    If ulCount <> 0 Then                            '先頭でなければ
+                        ulTarget = ulTarget + 1                                     ' 格納先の箱の番号を進める
+                    End If
+                    strChar(ulTarget, 0) = strTemp                              ' ulTargetがしめす箱へ
+                    strChar(ulTarget, 1) = 2                                     ' 属性=2(左かっこ)
+                Case ")"
+                    ulTarget = ulTarget + 1                                     ' 格納先の箱の番号を進める
+                    strChar(ulTarget, 0) = strTemp                              ' ulTargetがしめす箱へ
+                    strChar(ulTarget, 1) = 3                                    ' 属性=3(右かっこ)
+                Case Else
+                    ulTarget = ulTarget + 1                                     ' 格納先の箱の番号を進める
+                    If ulCount = 0 Then
+                        ulTarget = ulTarget - 1
+                    Else
+                        If strChar(ulTarget - 1, 1) = 4 Then
+                            ulTarget = ulTarget - 1
+                        End If
+                    End If
+                    strChar(ulTarget, 0) = strChar(ulTarget, 0) + strTemp
+                    strChar(ulTarget, 1) = 4                            ' 属性=4(数字)
+            End Select
+
+        Next
+        DecompStr = ulTarget + 1
+    End Function
+
+    ' 分割された文字列を演算する関数
+    ' 
+    Private Function CalcString(ByVal ulDecompCount As Long, ByRef strCalcChar(,) As String) As Long
+        Dim ulCount As Long
+        Dim ulCalcPos As Long
+        Dim strMemChr As String
+        Dim dblLeftValue As Double
+        Dim dblRightValue As Double
+        Dim dblCalcValue As Double
+
+        '余計なｶｯｺを消す
+        For ulCount = 0 To ulDecompCount - 1
+            Application.DoEvents()
+            If strCalcChar(ulCount, 1) = 3 Then '右かっこ）なら
+                If strCalcChar(ulCount - 2, 1) = 2 Then ' 二つ前が左かっこ（なら
+                    '余計なｶｯｺなのでｶｯｺをつぶす
+                    strCalcChar(ulCount, 0) = ""
+                    strCalcChar(ulCount - 2, 0) = ""
+                    txtLog.Text = txtLog.Text + "!余計なｶｯｺを削除" + vbCrLf
+                    CalcString = 0
+                    Exit Function           '関数をぬける
+                End If
+            End If
+        Next
+
+        ulCalcPos = 0
+        strMemChr = ""
+        For ulCount = 0 To ulDecompCount - 1
+            Application.DoEvents()
+            If strCalcChar(ulCount, 1) = 1 Then     '演算子なら
+                If ulCalcPos = 0 Then                 '初めての演算子なら
+                    ulCalcPos = ulCount             '場所を記憶しておく
+                    strMemChr = strCalcChar(ulCount, 0) '演算子を記憶
+                Else                                'すでに演算子を記憶していたら
+                    Select Case strMemChr  '記憶済みの演算子の内容を確認
+                        Case "+", "-"                '優先度の低い演算子だったら
+                            Select Case strCalcChar(ulCount, 0)  '今回の演算子
+                                Case "*", "/"    '優先度の高い演算子なら
+                                    ulCalcPos = ulCount 'その演算子の場所と
+                                    strMemChr = strCalcChar(ulCount, 0) '演算子を記憶する
+                            End Select
+                    End Select
+                End If
+            ElseIf strCalcChar(ulCount, 1) = 2 Then 'そうではなくて左かっこだったら
+                ulCalcPos = 0                       '記録していたの演算優先は意味がないのでｸﾘｱ
+                strMemChr = ""
+            ElseIf strCalcChar(ulCount, 1) = 3 Then 'そうではなくて右かっこだったら、それ以降の演算子の順番は無意味
+                Exit For 'ﾙｰﾌﾟを抜ける
+            End If
+        Next
+        'ここで演算
+        dblLeftValue = Val(strCalcChar(ulCalcPos - 1, 0))  '演算子の左がわ
+        dblRightValue = Val(strCalcChar(ulCalcPos + 1, 0))  '演算子の右がわ
+        Select Case strMemChr
+            Case "+"
+                dblCalcValue = dblLeftValue + dblRightValue
+            Case "-"
+                dblCalcValue = dblLeftValue - dblRightValue
+            Case "*"
+                dblCalcValue = dblLeftValue * dblRightValue
+            Case "/"
+                If dblRightValue = 0 Then
+                    CalcString = 1
+                    Exit Function
+                Else
+                    dblCalcValue = dblLeftValue / dblRightValue
+                End If
+        End Select
+        strCalcChar(ulCalcPos - 1, 0) = Trim(Str(dblCalcValue)) '左側に演算結果を入れる
+        strCalcChar(ulCalcPos, 0) = ""                                  '演算子を空っぽにする
+        strCalcChar(ulCalcPos + 1, 0) = ""                      ' 右側の数字を空っぽにする
+
+        CalcString = 0
+
+
+    End Function
+
+    Private Sub txtCalcString_TextChanged(sender As Object, e As EventArgs) Handles txtCalcString.TextChanged
+
+        txtAnswer.Text = ""
+
+    End Sub
+
+    'Private Function decompstr(ByVal strData As String, ByRef strChar As String) As Long
+    '    For box2 = 0 To Strings.Len(strData) - 1
+    '   strChar(box2, 0) = ""
+
+    'End Function
+
+
+    'Private Sub TextBox1_TextChanged(sender As Object, e As EventArgs) Handles txtCalcString.TextChanged
+
+    '    End Sub
+End Class
